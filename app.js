@@ -4,7 +4,13 @@ const LS_PIN_MEMO = "portal_pin_memos";
 const LS_MYSITES = "portal_mysites";
 const LS_MYITEMS = "portal_myitems";
 const PIN_TAB = "📌 ピン留め";
-let DATA = { items: [], maintenance: false, generated_at: "" };
+const LS_AUTO = "portal_auto_fetch";
+const LS_LAST_AUTO = "portal_last_auto";
+const LS_OFFICIAL_AUTO = "portal_official_auto";
+const LS_FRESH = "portal_fresh";
+const AUTO_INTERVAL = 30 * 60 * 1000; // 30分
+const FRESH_TTL = 24 * 3600 * 1000;   // NEWバッジ表示期間
+let DATA = { items: [], maintenance: false, generated_at: "", sources: [] };
 let state = { site: "全項目", query: "", limit: "全件", sort: "new", style: "detail" };
 
 const $ = (id) => document.getElementById(id);
@@ -40,6 +46,33 @@ function isNewItem(item, generatedAt) {
   if (isNaN(t) || isNaN(g)) return false;
   return (g - t) <= 3 * 24 * 3600 * 1000;
 }
+/* 自動巡回で新規検出されたURL（24h以内）もNEW扱い */
+function getFreshUrls() {
+  try {
+    const f = JSON.parse(localStorage.getItem(LS_FRESH) || "null");
+    if (f && Date.now() - f.ts < FRESH_TTL && Array.isArray(f.urls)) return new Set(f.urls);
+  } catch { /* ignore */ }
+  return new Set();
+}
+function setFreshUrls(set) {
+  localStorage.setItem(LS_FRESH, JSON.stringify({ ts: Date.now(), urls: [...set].slice(0, 500) }));
+}
+function isFreshItem(item) {
+  return !!item._fresh || getFreshUrls().has(item.url) || isNewItem(item, DATA.generated_at);
+}
+/* テキスト中から日付を抽出（YYYY年M月D日 / YYYY/M/D / 令和N年M月D日 等） */
+function extractDateFromText(text) {
+  const s = String(text || "");
+  let m = s.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/)
+       || s.match(/(20\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = s.match(/(令和|平成|R|H)\s*(\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+  if (m) {
+    const base = { "令和": 2018, "R": 2018, "平成": 1988, "H": 1988 }[m[1]];
+    if (base) return new Date(base + (+m[2]) - 1, +m[3] - 1, +m[4]);
+  }
+  return null;
+}
 function fmtDate(d) {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
@@ -52,7 +85,7 @@ function dateFromStr(s) {
 /* ---------- カード描画 ---------- */
 function cardHtml(item, isPinned, isMy) {
   const badge = `🕒 公開・取得日時: ${esc(item.updated_at || "")}${item.source_type ? "　(" + esc(item.source_type) + ")" : ""}`;
-  const newBadge = isNewItem(item, DATA.generated_at) ? '<span class="new-badge">🆕 NEW</span>' : "";
+  const newBadge = isFreshItem(item) ? '<span class="new-badge">🆕 NEW</span>' : "";
   const kws = (item.matched_keywords || []).map((k) => `<span class="kw-tag">🔍 #${esc(k)}</span>`).join("");
   const summary = (state.style !== "compact" && item.summary) ? `<div class="summary-box">${esc(item.summary)}</div>` : "";
   const delBtn = isMy ? `<button class="pin-btn mydel-btn" data-mysite="${esc(item._mysite)}" data-url="${esc(item.url)}" title="この記事を削除">🗑</button>` : "";
@@ -73,7 +106,7 @@ function cardHtml(item, isPinned, isMy) {
 
 /* ---------- 公式アイテム ---------- */
 function filteredOfficial() {
-  let list = DATA.items.slice();
+  let list = DATA.items.concat(autoOfficialItems());
   if (state.site !== "全項目" && state.site !== PIN_TAB && !state.site.startsWith("⭐")) {
     list = list.filter((a) => a.site_name === state.site);
   }
@@ -129,7 +162,7 @@ function sortLimit(list) {
   } else {
     list.sort((x, y) => String(y.updated_at).localeCompare(String(x.updated_at)));
   }
-  list.sort((x, y) => (isNewItem(y, DATA.generated_at) ? 1 : 0) - (isNewItem(x, DATA.generated_at) ? 1 : 0));
+  list.sort((x, y) => (isFreshItem(y) ? 1 : 0) - (isFreshItem(x) ? 1 : 0));
   const total = list.length;
   if (state.limit === "10件") list = list.slice(0, 10);
   else if (state.limit === "30件") list = list.slice(0, 30);
@@ -146,22 +179,24 @@ function pinnedEntryHtml(item) {
 }
 
 function render() {
+  renderAutoBar();
   const pinned = getPinned();
-  const allItems = DATA.items.concat(allMyItems());
+  const autoOff = autoOfficialItems();
+  const allItems = DATA.items.concat(autoOff).concat(allMyItems());
   const pinnedItems = pinned.map((u) => allItems.find((a) => a.url === u)).filter(Boolean);
   $("pinned").innerHTML = pinnedItems.length ? `
     <div class="pinned-section"><h2>📌 保存済みリスト（要チェック ${pinnedItems.length}件）</h2>
     ${pinnedItems.map(pinnedEntryHtml).join("")}</div>` : "";
 
   // ピル: ピン留めタブ + 公式サイト + マイサイト
-  const officialSites = [...new Set(DATA.items.map((a) => a.site_name).filter(Boolean))];
+  const officialSites = [...new Set(DATA.items.concat(autoOff).map((a) => a.site_name).filter(Boolean))];
   const mySites = getMySites().map((s) => `⭐ ${s.name}`);
   const pills = ["全項目", PIN_TAB, ...officialSites, ...mySites];
   $("pills").innerHTML = pills.map((s) =>
     `<button class="pill ${state.site === s ? "active" : ""}" data-site="${esc(s)}">${s === PIN_TAB ? `${PIN_TAB}（${pinnedItems.length}件）` : esc(s)}</button>`).join("");
 
   const myCount = allMyItems().length;
-  const totalAll = DATA.items.length + myCount;
+  const totalAll = DATA.items.length + autoOff.length + myCount;
   let shown = [], total = 0, listHtml = "";
   if (state.site === PIN_TAB) {
     shown = pinnedItems; total = pinnedItems.length;
@@ -318,11 +353,13 @@ function parseFeed(xmlText, baseUrl) {
     if (atomLink?.getAttribute("href")) link = atomLink.getAttribute("href");
     else link = (n.querySelector("link")?.textContent || "").trim();
     const dateStr = n.querySelector("pubDate, published, updated, dc\\:date")?.textContent || "";
-    const d = new Date(dateStr);
+    let d = new Date(dateStr);
+    const summary = (n.querySelector("description")?.textContent || "").replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").trim().slice(0, 300);
+    if (isNaN(d.getTime())) d = extractDateFromText(`${title} ${summary}`) || new Date(NaN);
     items.push({
       title: title || "無題",
       url: link || baseUrl,
-      summary: (n.querySelector("description")?.textContent || "").replace(/<!\[CDATA\[|\]\]>/g, "").replace(/<[^>]+>/g, "").trim().slice(0, 300),
+      summary,
       updated_at: isNaN(d.getTime()) ? "" : fmtDate(d),
       ts: isNaN(d.getTime()) ? 0 : d.getTime(),
     });
@@ -359,7 +396,11 @@ function parseHtmlLinks(htmlText, pageUrl) {
       if (t.length > text.length + 10) { ctx = t.slice(0, 200); break; }
       p = p.parentElement;
     }
-    items.push({ title: text, url: abs, summary: ctx || desc.slice(0, 200), updated_at: "", ts: 0 });
+    const dt = extractDateFromText(ctx) || extractDateFromText(text);
+    items.push({
+      title: text, url: abs, summary: ctx || desc.slice(0, 200),
+      updated_at: dt ? fmtDate(dt) : "", ts: dt ? dt.getTime() : 0,
+    });
     if (items.length >= 15) break;
   }
   return { items, pageTitle, feedLink: feedLink ? new URL(feedLink, base).href : null, desc };
@@ -420,6 +461,99 @@ async function refreshMySites(specificId) {
   renderMySites(); render();
 }
 
+/* ---------- 自動巡回（オートフェッチ） ---------- */
+function getAutoOn() { return localStorage.getItem(LS_AUTO) !== "0"; }
+function getLastAuto() { return +(localStorage.getItem(LS_LAST_AUTO) || 0); }
+function setLastAuto(ts) { localStorage.setItem(LS_LAST_AUTO, String(ts)); }
+function getOfficialAuto() {
+  try { return JSON.parse(localStorage.getItem(LS_OFFICIAL_AUTO) || "{}"); } catch { return {}; }
+}
+function setOfficialAuto(o) { localStorage.setItem(LS_OFFICIAL_AUTO, JSON.stringify(o)); }
+/* 自動巡回で取得した公式ソース記事をアイテム形式で返す */
+function autoOfficialItems() {
+  const out = [];
+  for (const [url, it] of Object.entries(getOfficialAuto())) {
+    out.push({
+      title: it.title, url, summary: it.summary || "",
+      updated_at: it.updated_at || "", site_name: it.site_name || "公式",
+      source_type: "自動巡回", matched_keywords: [], ts: it.ts || 0,
+    });
+  }
+  return out;
+}
+function renderAutoBar() {
+  const bar = $("auto-bar");
+  if (!bar) return;
+  const on = getAutoOn();
+  $("auto-toggle").checked = on;
+  $("auto-state").textContent = on ? "ON" : "OFF";
+  const last = getLastAuto();
+  $("auto-status").textContent = last ? `最終更新: ${fmtDate(new Date(last))}` : "まだ巡回していません";
+}
+let autoRunning = false;
+async function autoFetch() {
+  if (autoRunning) return;
+  autoRunning = true;
+  $("auto-status").textContent = "巡回中...";
+  const fresh = getFreshUrls();
+  let freshCount = 0;
+  try {
+    // 1) 公式ソース（data.json の sources）を巡回
+    const sources = Array.isArray(DATA.sources) ? DATA.sources : [];
+    const knownOfficial = new Set(DATA.items.map((i) => i.url));
+    const oldOfficial = getOfficialAuto();
+    const newOfficial = {};
+    for (const src of sources) {
+      if (!src.url) continue;
+      try {
+        let items = await fetchMySite({ url: src.url });
+        items = items.filter((it) => it.url && !knownOfficial.has(it.url)).slice(0, 15);
+        for (const it of items) {
+          const isNew = !oldOfficial[it.url];
+          if (isNew) { fresh.add(it.url); freshCount++; }
+          newOfficial[it.url] = {
+            title: it.title, summary: it.summary || "",
+            updated_at: it.updated_at || fmtDate(new Date()),
+            ts: it.ts || Date.now(), site_name: src.name || "公式サイト",
+          };
+        }
+      } catch (e) { /* 個別失敗はスキップ */ }
+    }
+    setOfficialAuto(newOfficial);
+    // 2) マイサイトを巡回（新規URLをNEW検出）
+    const mySites = getMySites();
+    const oldMy = getMyItems();
+    const cache = {};
+    for (const s of mySites) {
+      try {
+        let items = await fetchMySite(s);
+        items = items.filter((it) => it.url).slice(0, 20);
+        const oldUrls = new Set((oldMy[s.id] || []).map((it) => it.url));
+        for (const it of items) {
+          if (!oldUrls.has(it.url) && oldMy[s.id]) { fresh.add(it.url); freshCount++; }
+          if (!it.updated_at) it.updated_at = fmtDate(new Date());
+        }
+        cache[s.id] = items;
+      } catch (e) {
+        cache[s.id] = oldMy[s.id] || [];
+      }
+    }
+    setMyItems(cache);
+    if (freshCount) setFreshUrls(fresh);
+    setLastAuto(Date.now());
+    myStatus(`自動巡回完了: 新着 ${freshCount} 件を検出`);
+  } catch (e) {
+    $("auto-status").textContent = "巡回失敗";
+  } finally {
+    autoRunning = false;
+    renderAutoBar(); render();
+  }
+}
+function maybeAutoFetch() {
+  if (!getAutoOn() || autoRunning) return;
+  if (Date.now() - getLastAuto() > AUTO_INTERVAL) autoFetch();
+}
+
 /* ---------- 書き出し/復元 ---------- */
 function exportMyData() {
   const payload = { sites: getMySites(), items: getMyItems(), exported_at: fmtDate(new Date()) };
@@ -464,6 +598,11 @@ function bind() {
     if (e.target.files[0]) importMyData(e.target.files[0]);
     e.target.value = "";
   });
+  $("auto-toggle").addEventListener("change", (e) => {
+    localStorage.setItem(LS_AUTO, e.target.checked ? "1" : "0");
+    renderAutoBar();
+    if (e.target.checked) maybeAutoFetch();
+  });
   document.addEventListener("input", (e) => {
     const memo = e.target.closest(".pin-memo-input");
     if (memo) setPinMemo(memo.dataset.url, memo.value);
@@ -500,6 +639,9 @@ fetch("data.json")
     }
     $("gen-info").textContent = `複数サイトの最新トピックを一元表示　🕒 データ生成: ${DATA.generated_at || "-"}`;
     renderMySites(); bind(); render();
+    // 自動巡回: 前回から30分以上経過していれば裏側で巡回開始
+    maybeAutoFetch();
+    setInterval(maybeAutoFetch, 60 * 1000); // 開きっぱなしでも1時間ごとに判定
   })
   .catch(() => {
     $("gen-info").textContent = "データの読み込みに失敗しました。";

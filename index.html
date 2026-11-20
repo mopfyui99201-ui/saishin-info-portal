@@ -124,12 +124,25 @@
   .maintenance { text-align: center; padding: 60px 20px; }
   .maintenance h1 { font-size: 1.8rem; }
   .footer-note { font-size: 0.75rem; color: #64748b; margin-top: 20px; text-align: center; }
+  .auto-bar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: #14532d; border: 1px solid #22c55e; border-radius: 10px;
+    padding: 8px 14px; margin-bottom: 12px; font-size: 0.85rem;
+  }
+  .auto-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; }
+  .auto-toggle input { width: 18px; height: 18px; accent-color: #22c55e; cursor: pointer; }
+  .auto-status { color: #bbf7d0; font-size: 0.8rem; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>🌐 最新情報ポータル</h1>
   <div class="sub" id="gen-info">読み込み中...</div>
+  <div class="auto-bar">
+    <label class="auto-toggle"><input type="checkbox" id="auto-toggle"> <span id="auto-state">ON</span></label>
+    <span>🤖 自動巡回</span>
+    <span class="auto-status" id="auto-status"></span>
+  </div>
 
   <details class="manual">
     <summary>📖 使い方・操作マニュアル（クリックで開閉）</summary>
@@ -139,6 +152,7 @@
       <li><b>🆕 NEWバッジ</b>: 直近3日以内に更新された項目に表示されます。</li>
       <li><b>📌 ピン留め</b>: 各カード左の📍ボタンで「保存済みリスト」に登録。このブラウザに保存され、ページを再読み込みしても残ります。絞り込みバーの「📌 ピン留め（N件）」タブで一覧表示でき、各項目にメモを追記・カードのボタンで解除できます。</li>
       <li><b>表示設定</b>: 件数（10/30/全件）・並び順・表示スタイルを右側メニューで変更できます。</li>
+      <li><b>🤖 自動巡回</b>: 上部の緑バーでON/OFFを切替。ONの間は30分ごとに裏側で登録サイト・マイサイトを自動巡回し、新着記事に🆕NEWバッジを付けて最上部に整理します。</li>
       <li><b>➕ マイサイト</b>: 下のパネルから自分専用のサイト・ニュース・検索キーワードを登録できます（このブラウザのみに保存・他の人には影響しません）。登録後「🔄 マイサイトを最新更新」で記事を取得し、公式トピックと並べて表示されます。登録サイトは「✏️ 編集」「🗑️ 削除」、取得記事はカードの🗑️ボタンで個別削除できます。書き出し/復元で別端末へ移行も可能です。</li>
       <li>このページは静的サイトのため、Macの電源を切っていても常時閲覧できます。データは管理者が「公開」ボタンを押した時点のものです。</li>
     </ul>

@@ -1,7 +1,9 @@
 /* 最新情報ポータル 静的閲覧版 */
 const LS_PIN = "portal_pinned_urls";
+const LS_PIN_MEMO = "portal_pin_memos";
 const LS_MYSITES = "portal_mysites";
 const LS_MYITEMS = "portal_myitems";
+const PIN_TAB = "📌 ピン留め";
 let DATA = { items: [], maintenance: false, generated_at: "" };
 let state = { site: "全項目", query: "", limit: "全件", sort: "new", style: "detail" };
 
@@ -15,6 +17,15 @@ function getPinned() {
   try { return JSON.parse(localStorage.getItem(LS_PIN) || "[]"); } catch { return []; }
 }
 function setPinned(arr) { localStorage.setItem(LS_PIN, JSON.stringify(arr)); }
+function getPinMemos() {
+  try { return JSON.parse(localStorage.getItem(LS_PIN_MEMO) || "{}"); } catch { return {}; }
+}
+function setPinMemos(obj) { localStorage.setItem(LS_PIN_MEMO, JSON.stringify(obj)); }
+function setPinMemo(url, memo) {
+  const m = getPinMemos();
+  if (memo) m[url] = memo; else delete m[url];
+  setPinMemos(m);
+}
 function getMySites() {
   try { return JSON.parse(localStorage.getItem(LS_MYSITES) || "[]"); } catch { return []; }
 }
@@ -44,9 +55,11 @@ function cardHtml(item, isPinned, isMy) {
   const newBadge = isNewItem(item, DATA.generated_at) ? '<span class="new-badge">🆕 NEW</span>' : "";
   const kws = (item.matched_keywords || []).map((k) => `<span class="kw-tag">🔍 #${esc(k)}</span>`).join("");
   const summary = (state.style !== "compact" && item.summary) ? `<div class="summary-box">${esc(item.summary)}</div>` : "";
+  const delBtn = isMy ? `<button class="pin-btn mydel-btn" data-mysite="${esc(item._mysite)}" data-url="${esc(item.url)}" title="この記事を削除">🗑</button>` : "";
   return `
   <div class="card-row">
     <button class="pin-btn ${isPinned ? "pinned" : ""}" data-url="${esc(item.url)}" title="📌 保存（要チェック）">${isPinned ? "📌" : "📍"}</button>
+    ${delBtn}
     <div class="portal-card">
       <div class="card-date">${esc(badge)}</div>
       <div><span class="site-badge" style="${isMy ? "background:#7c3aed;" : ""}">${esc(item.site_name || "情報元")}</span>${newBadge}</div>
@@ -61,7 +74,7 @@ function cardHtml(item, isPinned, isMy) {
 /* ---------- 公式アイテム ---------- */
 function filteredOfficial() {
   let list = DATA.items.slice();
-  if (state.site !== "全項目" && !state.site.startsWith("⭐")) {
+  if (state.site !== "全項目" && state.site !== PIN_TAB && !state.site.startsWith("⭐")) {
     list = list.filter((a) => a.site_name === state.site);
   }
   const qs = parseKeywords(state.query);
@@ -124,38 +137,54 @@ function sortLimit(list) {
 }
 
 /* ---------- 描画 ---------- */
+function pinnedEntryHtml(item) {
+  const memo = getPinMemos()[item.url] || "";
+  return `<div class="pin-entry">${cardHtml(item, true, !!item._mysite)}
+    <div class="pin-memo-row"><span style="flex:0 0 auto;">📝 メモ:</span>
+    <input class="pin-memo-input" data-url="${esc(item.url)}" value="${esc(memo)}" placeholder="この案件のメモを入力（入力すると自動保存）"></div>
+  </div>`;
+}
+
 function render() {
   const pinned = getPinned();
   const allItems = DATA.items.concat(allMyItems());
   const pinnedItems = pinned.map((u) => allItems.find((a) => a.url === u)).filter(Boolean);
   $("pinned").innerHTML = pinnedItems.length ? `
     <div class="pinned-section"><h2>📌 保存済みリスト（要チェック ${pinnedItems.length}件）</h2>
-    ${pinnedItems.map((p) => cardHtml(p, true, p._mysite)).join("")}</div>` : "";
+    ${pinnedItems.map(pinnedEntryHtml).join("")}</div>` : "";
 
-  // ピル: 公式サイト + マイサイト
+  // ピル: ピン留めタブ + 公式サイト + マイサイト
   const officialSites = [...new Set(DATA.items.map((a) => a.site_name).filter(Boolean))];
   const mySites = getMySites().map((s) => `⭐ ${s.name}`);
-  const pills = ["全項目", ...officialSites, ...mySites];
+  const pills = ["全項目", PIN_TAB, ...officialSites, ...mySites];
   $("pills").innerHTML = pills.map((s) =>
-    `<button class="pill ${state.site === s ? "active" : ""}" data-site="${esc(s)}">${esc(s)}</button>`).join("");
+    `<button class="pill ${state.site === s ? "active" : ""}" data-site="${esc(s)}">${s === PIN_TAB ? `${PIN_TAB}（${pinnedItems.length}件）` : esc(s)}</button>`).join("");
 
   const myCount = allMyItems().length;
-  let shown, total, totalAll;
-  if (state.site === "全項目") {
+  const totalAll = DATA.items.length + myCount;
+  let shown = [], total = 0, listHtml = "";
+  if (state.site === PIN_TAB) {
+    shown = pinnedItems; total = pinnedItems.length;
+    listHtml = shown.length ? shown.map(pinnedEntryHtml).join("")
+      : `<div class="empty">📌 ピン留めされた項目はありません。各カードの📍ボタンで追加できます。</div>`;
+  } else if (state.site === "全項目") {
     const o = filteredOfficial(); const m = filteredMy();
     shown = o.list.concat(m.list).slice(0, state.limit === "10件" ? 10 : state.limit === "30件" ? 30 : 1e9);
-    total = o.total + m.total; totalAll = DATA.items.length + myCount;
+    total = o.total + m.total;
+    listHtml = shown.length ? shown.map((a) => cardHtml(a, pinned.includes(a.url), !!a._mysite)).join("") : "";
   } else if (state.site.startsWith("⭐")) {
-    const r = filteredMy(); shown = r.list; total = r.total; totalAll = DATA.items.length + myCount;
+    const r = filteredMy(); shown = r.list; total = r.total;
+    listHtml = shown.length ? shown.map((a) => cardHtml(a, pinned.includes(a.url), !!a._mysite)).join("") : "";
   } else {
-    const r = filteredOfficial(); shown = r.list; total = r.total; totalAll = DATA.items.length + myCount;
+    const r = filteredOfficial(); shown = r.list; total = r.total;
+    listHtml = shown.length ? shown.map((a) => cardHtml(a, pinned.includes(a.url), !!a._mysite)).join("") : "";
   }
   $("count").textContent = `📌 表示中: ${shown.length} 件（該当: ${total} 件 / 総データ: ${totalAll} 件${myCount ? ` うちマイサイト: ${myCount} 件` : ""}）`;
-  $("list").innerHTML = shown.length ? shown.map((a) => cardHtml(a, pinned.includes(a.url), !!a._mysite)).join("")
-    : `<div class="empty">💡 条件に一致する情報はありません。</div>`;
+  $("list").innerHTML = listHtml || `<div class="empty">💡 条件に一致する情報はありません。</div>`;
 }
 
 /* ---------- マイサイト管理 ---------- */
+let editingId = null;
 function renderMySites() {
   const sites = getMySites();
   const cache = getMyItems();
@@ -164,6 +193,7 @@ function renderMySites() {
     return `<div class="my-site-row">
       <span class="name">⭐ ${esc(s.name)}</span>
       ${s.category ? `<span class="cat">#${esc(s.category)}</span>` : ""}
+      <button class="btn edit-btn" data-edit="${esc(s.id)}" style="padding:4px 10px;">✏️ 編集</button>
       <button class="btn danger" data-del="${esc(s.id)}" style="padding:4px 10px;">🗑 削除</button>
       <span class="url">${esc(s.url)}${n ? `　取得済み ${n} 件` : ""}</span>
     </div>`;
@@ -175,12 +205,46 @@ function myMsg(text, ok) {
 }
 function myStatus(text) { $("my-status").textContent = text; }
 
+function resetEditForm() {
+  editingId = null;
+  $("my-add").textContent = "💾 登録して取得";
+  $("my-cancel-edit").style.display = "none";
+}
+function editMySite(id) {
+  const s = getMySites().find((x) => x.id === id);
+  if (!s) return;
+  editingId = id;
+  $("my-name").value = s.name;
+  $("my-url").value = s.url;
+  $("my-cat").value = s.category || "";
+  $("my-add").textContent = "💾 更新して保存";
+  $("my-cancel-edit").style.display = "inline-block";
+  $("mypanel").open = true;
+  $("my-name").focus();
+  myMsg(`「${s.name}」を編集中です。修正後「💾 更新して保存」を押してください。`, true);
+}
+function cancelEdit() {
+  resetEditForm();
+  $("my-name").value = ""; $("my-url").value = ""; $("my-cat").value = "";
+  myMsg("", true);
+}
 function addMySite() {
   const name = $("my-name").value.trim();
   const url = $("my-url").value.trim();
   const cat = $("my-cat").value.trim();
   if (!name || !url) { myMsg("サイト名とURL（またはキーワード）を入力してください。", false); return; }
   const sites = getMySites();
+  if (editingId) {
+    const s = sites.find((x) => x.id === editingId);
+    if (s) {
+      if (sites.some((x) => x.id !== editingId && x.url === url)) { myMsg("同じURL/キーワードが既に登録されています。", false); return; }
+      s.name = name; s.url = url; s.category = cat;
+      setMySites(sites);
+      myMsg(`「${name}」を更新しました。🔄更新で記事を再取得できます。`, true);
+      resetEditForm(); renderMySites(); render(); return;
+    }
+    editingId = null;
+  }
   if (sites.some((s) => s.url === url)) { myMsg("同じURL/キーワードは既に登録されています。", false); return; }
   const site = { id: "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, url, category: cat };
   sites.push(site); setMySites(sites);
@@ -191,6 +255,19 @@ function addMySite() {
 function deleteMySite(id) {
   setMySites(getMySites().filter((s) => s.id !== id));
   const cache = getMyItems(); delete cache[id]; setMyItems(cache);
+  if (editingId === id) cancelEdit();
+  renderMySites(); render();
+}
+function deleteMyItem(siteId, url) {
+  const cache = getMyItems();
+  if (cache[siteId]) {
+    cache[siteId] = cache[siteId].filter((it) => it.url !== url);
+    setMyItems(cache);
+  }
+  // ピン留め・メモも連動して削除
+  const pins = getPinned().filter((u) => u !== url);
+  setPinned(pins);
+  setPinMemo(url, "");
   renderMySites(); render();
 }
 
@@ -377,6 +454,7 @@ function bind() {
   $("sort").addEventListener("change", (e) => { state.sort = e.target.value; render(); });
   $("style").addEventListener("change", (e) => { state.style = e.target.value; render(); });
   $("my-add").addEventListener("click", addMySite);
+  $("my-cancel-edit").addEventListener("click", cancelEdit);
   $("my-refresh").addEventListener("click", () => refreshMySites());
   $("my-export").addEventListener("click", exportMyData);
   $("my-import").addEventListener("click", () => $("my-import-file").click());
@@ -384,11 +462,19 @@ function bind() {
     if (e.target.files[0]) importMyData(e.target.files[0]);
     e.target.value = "";
   });
+  document.addEventListener("input", (e) => {
+    const memo = e.target.closest(".pin-memo-input");
+    if (memo) setPinMemo(memo.dataset.url, memo.value);
+  });
   document.addEventListener("click", (e) => {
     const pill = e.target.closest(".pill");
     if (pill) { state.site = pill.dataset.site; render(); return; }
     const del = e.target.closest("[data-del]");
     if (del) { deleteMySite(del.dataset.del); return; }
+    const edit = e.target.closest("[data-edit]");
+    if (edit) { editMySite(edit.dataset.edit); return; }
+    const mydel = e.target.closest(".mydel-btn");
+    if (mydel) { deleteMyItem(mydel.dataset.mysite, mydel.dataset.url); return; }
     const btn = e.target.closest(".pin-btn");
     if (btn) {
       const url = btn.dataset.url;

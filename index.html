@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>最新情報ポータル</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: #0b1120; color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 4px 0 2px; }
+  .sub { color: #94a3b8; font-size: 0.85rem; margin-bottom: 12px; }
+  details.manual {
+    background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 14px; font-size: 0.88rem;
+  }
+  details.manual summary { cursor: pointer; font-weight: 700; color: #7dd3fc; }
+  details.manual ul { margin: 8px 0 4px; padding-left: 20px; }
+  details.manual li { margin: 4px 0; line-height: 1.6; }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .toolbar input[type="search"] {
+    flex: 1 1 220px; padding: 9px 12px; border-radius: 8px;
+    border: 1px solid #334155; background: #0f172a; color: #f1f5f9; font-size: 0.95rem;
+  }
+  .toolbar select {
+    padding: 8px 10px; border-radius: 8px; border: 1px solid #334155;
+    background: #0f172a; color: #f1f5f9; font-size: 0.88rem;
+  }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .pill {
+    padding: 6px 12px; border-radius: 16px; font-size: 0.82rem; font-weight: 600;
+    background: #1e293b; border: 1px solid #334155; color: #cbd5e1; cursor: pointer;
+  }
+  .pill.active { background: #0284c7; border-color: #0284c7; color: #fff; }
+  .count { font-size: 0.85rem; color: #94a3b8; margin: 6px 0 12px; }
+  .card-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 14px; }
+  .pin-btn {
+    flex: 0 0 auto; width: 38px; padding: 8px 0; border-radius: 8px; cursor: pointer;
+    background: #1e293b; border: 1px solid #334155; color: #cbd5e1; font-size: 1rem;
+  }
+  .pin-btn.pinned { background: #064e3b; border-color: #34d399; color: #34d399; }
+  .portal-card {
+    flex: 1 1 auto; background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155; border-radius: 12px; padding: 16px 18px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+  }
+  .card-date { font-size: 0.8rem; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
+  .site-badge {
+    display: inline-block; padding: 3px 10px; font-size: 0.76rem; font-weight: 700;
+    border-radius: 12px; background: #0284c7; color: #fff; margin-right: 6px;
+  }
+  .new-badge {
+    display: inline-block; padding: 2px 9px; font-size: 0.72rem; font-weight: 800;
+    border-radius: 10px; background: #dc2626; color: #fff; margin-left: 6px;
+    box-shadow: 0 0 8px rgba(220,38,38,0.5);
+  }
+  .card-title { font-size: 1.1rem; font-weight: 700; color: #fff; margin: 6px 0 8px; line-height: 1.45; }
+  .kw-tag {
+    display: inline-block; background: #064e3b; color: #34d399; padding: 2px 8px;
+    border-radius: 10px; font-size: 0.74rem; margin: 0 4px 6px 0;
+  }
+  .summary-box {
+    font-size: 0.9rem; color: #cbd5e1; line-height: 1.65; margin: 8px 0 14px;
+    background: rgba(15,23,42,0.65); padding: 12px 14px; border-radius: 8px;
+    border-left: 3px solid #38bdf8; word-break: break-word; white-space: pre-wrap;
+  }
+  .open-link {
+    display: inline-flex; align-items: center; text-decoration: none;
+    background: #0284c7; color: #fff !important; border-radius: 6px;
+    padding: 7px 16px; font-size: 0.85rem; font-weight: 600;
+  }
+  .open-link:hover { background: #0369a1; }
+  .pinned-section {
+    background: #1e293b; border: 1px solid #34d399; border-radius: 12px;
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .pinned-section h2 { font-size: 1rem; margin: 0 0 10px; color: #34d399; }
+  .empty { color: #94a3b8; font-size: 0.9rem; padding: 20px; text-align: center; }
+  .maintenance { text-align: center; padding: 60px 20px; }
+  .maintenance h1 { font-size: 1.8rem; }
+  .footer-note { font-size: 0.75rem; color: #64748b; margin-top: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌐 最新情報ポータル</h1>
+  <div class="sub" id="gen-info">読み込み中...</div>
+
+  <details class="manual">
+    <summary>📖 使い方・操作マニュアル（クリックで開閉）</summary>
+    <ul>
+      <li><b>🔍 検索</b>: 上の検索バーにキーワードを入力するとタイトル・サマリー・サイト名から絞り込みます（スペース区切りで複数ワード可）。</li>
+      <li><b>サイト別表示</b>: サイト名ボタンでワンクリック絞り込み。</li>
+      <li><b>🆕 NEWバッジ</b>: 直近3日以内に更新された項目に表示されます。</li>
+      <li><b>📌 ピン留め</b>: 各カード左の📌ボタンで「保存済みリスト」に登録。このブラウザに保存され、ページを再読み込みしても残ります。</li>
+      <li><b>表示設定</b>: 件数（10/30/全件）・並び順・表示スタイルを右側メニューで変更できます。</li>
+      <li>このページは静的サイトのため、Macの電源を切っていても常時閲覧できます。データは管理者が「公開」ボタンを押した時点のものです。</li>
+    </ul>
+  </details>
+
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="🔍 キーワードで絞り込み（タイトル・本文・サイト名）...">
+    <select id="limit"><option>10件</option><option>30件</option><option selected>全件</option></select>
+    <select id="sort"><option value="new">日時が新しい順</option><option value="site">サイト名順</option></select>
+    <select id="style"><option value="detail">詳細サマリー表示</option><option value="compact">コンパクト表示</option></select>
+  </div>
+  <div class="pills" id="pills"></div>
+  <div class="count" id="count"></div>
+  <div id="pinned"></div>
+  <div id="list"></div>
+  <div class="footer-note">最新情報ポータル（GitHub Pages 静的公開版）</div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -79,6 +79,35 @@
     padding: 12px 16px; margin-bottom: 16px;
   }
   .pinned-section h2 { font-size: 1rem; margin: 0 0 10px; color: #34d399; }
+  details.mypanel {
+    background: #1e293b; border: 1px solid #7c3aed; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 14px; font-size: 0.88rem;
+  }
+  details.mypanel summary { cursor: pointer; font-weight: 700; color: #c4b5fd; }
+  .myform { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .myform input {
+    flex: 1 1 160px; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid #334155; background: #0f172a; color: #f1f5f9; font-size: 0.88rem;
+  }
+  .btn {
+    padding: 8px 14px; border-radius: 8px; border: 1px solid #334155;
+    background: #1e293b; color: #e2e8f0; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  }
+  .btn:hover { background: #334155; }
+  .btn.primary { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+  .btn.danger { background: #3f1d1d; border-color: #7f1d1d; color: #fca5a5; }
+  .my-site-row {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 8px 10px; border: 1px solid #334155; border-radius: 8px;
+    margin-bottom: 8px; background: #0f172a;
+  }
+  .my-site-row .name { font-weight: 700; color: #fff; }
+  .my-site-row .cat { font-size: 0.74rem; color: #c4b5fd; }
+  .my-site-row .url { font-size: 0.76rem; color: #94a3b8; word-break: break-all; flex: 1 1 100%; }
+  .my-status { font-size: 0.8rem; color: #94a3b8; margin: 6px 0; }
+  .my-msg { font-size: 0.82rem; margin: 6px 0; }
+  .my-msg.ok { color: #34d399; }
+  .my-msg.err { color: #fca5a5; }
   .empty { color: #94a3b8; font-size: 0.9rem; padding: 20px; text-align: center; }
   .maintenance { text-align: center; padding: 60px 20px; }
   .maintenance h1 { font-size: 1.8rem; }
@@ -98,8 +127,28 @@
       <li><b>🆕 NEWバッジ</b>: 直近3日以内に更新された項目に表示されます。</li>
       <li><b>📌 ピン留め</b>: 各カード左の📌ボタンで「保存済みリスト」に登録。このブラウザに保存され、ページを再読み込みしても残ります。</li>
       <li><b>表示設定</b>: 件数（10/30/全件）・並び順・表示スタイルを右側メニューで変更できます。</li>
+      <li><b>➕ マイサイト</b>: 下のパネルから自分専用のサイト・ニュース・検索キーワードを登録できます（このブラウザのみに保存・他の人には影響しません）。登録後「🔄 マイサイトを最新更新」で記事を取得し、公式トピックと並べて表示されます。書き出し/復元で別端末へ移行も可能です。</li>
       <li>このページは静的サイトのため、Macの電源を切っていても常時閲覧できます。データは管理者が「公開」ボタンを押した時点のものです。</li>
     </ul>
+  </details>
+
+  <details class="mypanel" id="mypanel">
+    <summary>➕ マイサイトを追加（自分専用リスト登録・このブラウザのみ保存）</summary>
+    <div class="myform">
+      <input id="my-name" placeholder="サイト名（例：気になるブログ）" maxlength="60">
+      <input id="my-url" placeholder="URL / RSS URL / 検索キーワード" maxlength="300">
+      <input id="my-cat" placeholder="カテゴリ（例：ニュース、趣味）" maxlength="30">
+      <button class="btn primary" id="my-add">💾 登録して取得</button>
+    </div>
+    <div class="my-status" id="my-status"></div>
+    <div class="my-msg" id="my-msg"></div>
+    <div id="my-list"></div>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+      <button class="btn" id="my-refresh">🔄 マイサイトを最新更新</button>
+      <button class="btn" id="my-export">⬇️ マイサイトを書き出し</button>
+      <button class="btn" id="my-import">⬆️ 書き出したデータを復元</button>
+      <input type="file" id="my-import-file" accept="application/json,.json" style="display:none">
+    </div>
   </details>
 
   <div class="toolbar">

@@ -272,7 +272,9 @@ function deleteMyItem(siteId, url) {
 }
 
 /* ---------- 外部取得（CORSプロキシ経由） ---------- */
+const MY_PROXY = "https://sparkling-firefly-4550.mopfyui99201.workers.dev";
 const PROXIES = [
+  (u) => `${MY_PROXY}?url=${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   (u) => `https://cors.isomorphic-git.org/${u}`,
